@@ -494,17 +494,9 @@ export const DICTIONARY = {
         'category.Errand': 'Errand',
         'category.Social/Emotional Support': 'Social/Emotional Support',
         'category.Home Help/Safety': 'Home Help/Safety',
+        'category.Technology': 'Technology',
         'category.Other': 'Other',
 
-        // Dynamic Subcategories
-        'subcategory.Medical Appointment': 'Medical Appointment',
-        'subcategory.Grocery': 'Grocery',
-        'subcategory.Friendly Visit': 'Friendly Visit',
-        'subcategory.Yard Work': 'Yard Work',
-        'subcategory.Church Service': 'Church Service',
-        'subcategory.Tech Help': 'Tech Help',
-        'subcategory.Light Housekeeping': 'Light Housekeeping',
-        'subcategory.Meal Prep': 'Meal Prep',
 
         // Onboarding
         'onboarding.welcome_title': 'Welcome to NPVN',
@@ -625,6 +617,15 @@ export const DICTIONARY = {
         'subcategory.game_activity_buddy': 'Game/Activity Buddy',
         'subcategory.reading_helper': 'Reading Helper',
         'subcategory.other': 'Other',
+        'subcategory.general': 'General',
+        'subcategory.grocery': 'Grocery',
+        'subcategory.yard_work': 'Yard Work',
+        'subcategory.church_service': 'Church Service',
+        'subcategory.tech_help': 'Tech Help',
+        'subcategory.light_housekeeping': 'Light Housekeeping',
+        'subcategory.meal_prep': 'Meal Prep',
+
+
 
         // Client Resources
         'client.resources_title': 'Client Resources',
@@ -718,7 +719,7 @@ export const DICTIONARY = {
 
         // Client Dashboard Extras
         'client.platform_overview': 'Platform Overview: Complete',
-        'client.view_resources': 'View Resources',
+        'client.view_resources': 'Access Training Center',
         'client.access_resources': 'Access local food, housing, and transportation resources.',
         'client.view_directory': 'View Local Directory',
         'client.volunteer_assigned': 'Volunteer Assigned!',
@@ -1721,19 +1722,6 @@ export const DICTIONARY = {
         'vol.add_to_calendar': 'Añadir al Calendario',
         'common.update': 'Actualización',
         'survey.post_service_report': 'Informe Post-Servicio',
-        'survey.title': 'Comentarios del Servicio',
-        'survey.request_details': 'Detalles de la Solicitud',
-        'survey.was_completed': '¿Se completó la solicitud?',
-        'survey.status_completed': 'Sí, Completada',
-        'survey.status_no_show': 'No se presentó',
-        'survey.status_unable': 'No se pudo completar',
-        'survey.rating_label': '¿Cómo calificaría su experiencia?',
-        'survey.on_time_label': '¿Llegó a tiempo el voluntario?',
-        'survey.safe_label': '¿Se sintió seguro?',
-        'survey.comments_label': 'Comentarios Adicionales',
-        'survey.comments_placeholder': 'Comparta detalles sobre su experiencia...',
-        'survey.submit_feedback': 'Enviar Comentarios',
-        'survey.submit': 'Enviar Reporte',
         'survey.privacy_note': 'Sus comentarios nos ayudan a mejorar. Los comentarios negativos se manejarán con discreción.',
         'survey.no_show_title': 'Reportar Ausencia',
         'survey.no_show_desc': 'Lamentamos que el voluntario no haya llegado. Por favor, busque un reemplazo o contacte al personal si es urgente.',

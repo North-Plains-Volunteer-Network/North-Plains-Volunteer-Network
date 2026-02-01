@@ -415,7 +415,7 @@ const RequestDataGrid: React.FC<{ title: string; requests: Request[]; onViewRequ
                         </td>
                         <td className="px-4 py-3">{req.date}</td>
                         <td className="px-4 py-3 font-medium text-slate-900">{req.clientName}</td>
-                        <td className="px-4 py-3">{req.subcategory}</td>
+                        <td className="px-4 py-3">{t(`subcategory.${req.subcategory.toLowerCase().replace(/[\/\s-]/g, '_')}`) || req.subcategory}</td>
                         <td className="px-4 py-3">{req.volunteerName || <span className="text-slate-400 italic">{t('request.unassigned')}</span>}</td>
                         <td className="px-4 py-3"><StatusBadge status={req.status} /></td>
                         <td className="px-4 py-3 text-amber-500 font-bold">{req.status === RequestStatus.COMPLETED ? '5.0' : '-'}</td>
@@ -741,7 +741,7 @@ const AllRequestsTable: React.FC<{ requests: Request[]; onUpdateRequest?: (reqId
 
                         <div className="bg-slate-50 p-3 rounded text-sm space-y-1">
                            <p><strong>Client:</strong> {selectedActionRequest.clientName}</p>
-                           <p><strong>Task:</strong> {selectedActionRequest.category} - {selectedActionRequest.subcategory}</p>
+                           <p><strong>Task:</strong> {t(`category.${selectedActionRequest.category}`) || selectedActionRequest.category} - {t(`subcategory.${selectedActionRequest.subcategory.toLowerCase().replace(/[\/\s-]/g, '_')}`) || selectedActionRequest.subcategory}</p>
                            <p><strong>Date:</strong> {selectedActionRequest.date}</p>
                            <p><strong>Contact:</strong> 555-0123 (Click to Call)</p>
                         </div>

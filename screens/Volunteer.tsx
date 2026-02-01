@@ -6,8 +6,10 @@ import { Card, Button, StatusBadge, StatWidget, Modal, Input, ProgressBar, Calen
 import { Calendar, MapPin, CheckCircle, Clock, AlertTriangle, ChevronDown, ChevronUp, User as UserIcon, Car, ShoppingBasket, Heart, Home, HelpCircle, Phone, Mail, ShieldCheck, ExternalLink, FileText, CreditCard, X, BookOpen, Globe, Bus, ShieldAlert, PlayCircle, Lightbulb, Lock, Utensils, Map, Info, CalendarPlus, ArrowRight, Settings, MessageSquare } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { useTheme } from '../context/ThemeContext';
+import { formatTimeWithAMPM } from '../services/timeUtils';
 import { OnboardingNextStepsModal } from './Client';
 import { downloadICS } from '../utils/export';
+import { UnifiedOnboarding } from './UnifiedOnboarding';
 
 interface VolunteerProps {
    user: User;
@@ -341,7 +343,7 @@ export const VolunteerDashboard: React.FC<VolunteerProps> = ({ user, requests, o
    }, [requests, user.id]);
 
    if (user.onboardingStep !== OnboardingStep.COMPLETE) {
-      return <VolunteerOnboarding user={user} onUpdate={onUpdateUser} onNavigate={onNavigate} />;
+      return <UnifiedOnboarding user={user} onUpdate={onUpdateUser} onNavigate={onNavigate} />;
    }
 
    const myAssignments = requests.filter(r => {
@@ -678,7 +680,7 @@ const AssignedRequestCard: React.FC<{ request: Request; onLogHours: () => void; 
                         <p><strong>{t('req.destination')}:</strong> {request.destinationAddress || request.location}</p>
                      </div>
                   ) : (
-                     <p className="text-sm text-slate-600 dark:text-slate-300">{request.date} @ {request.timeWindow || request.pickupTime}</p>
+                     <p className="text-sm text-slate-600 dark:text-slate-300">{request.date} @ {formatTimeWithAMPM(request.timeWindow || request.pickupTime || '')}</p>
                   )}
                </div>
             </div>
@@ -781,10 +783,56 @@ const AssignedRequestCard: React.FC<{ request: Request; onLogHours: () => void; 
 export const VolunteerOnboarding: React.FC<{ user: User; onUpdate: (u: Partial<User>) => void; onNavigate: (p: string) => void }> = ({ user, onUpdate, onNavigate }) => {
    const { t } = useTheme();
    const [step, setStep] = useState(1);
+   const [error, setError] = useState<string | null>(null);
    const [formData, setFormData] = useState<Partial<User>>({
       address: 'North Plains, OR 97133', // Prefill
       ...user
    });
+
+   const validateStep = (currentStep: number): boolean => {
+      setError(null);
+      switch (currentStep) {
+         case 1: // Contact & Identity
+            if (!formData.name || !formData.dob || !formData.gender) {
+               setError(t('common.fill_required'));
+               return false;
+            }
+            if (!formData.phone && !formData.email) {
+               setError(t('onboarding.contact_required') || 'Phone or Email is required');
+               return false;
+            }
+            if (!formData.preferredContactMethod) {
+               setError(t('common.fill_required'));
+               return false;
+            }
+            break;
+         case 2: // HUD / Demographics
+            if (!formData.race || !formData.ethnicity || !formData.maritalStatus || !formData.incomeRange) {
+               setError(t('common.fill_required'));
+               return false;
+            }
+            // Emergency Contact
+            if (!formData.emergencyContact?.name || !formData.emergencyContact?.phone || !formData.emergencyContact?.relation) {
+               setError(t('onboarding.emergency_required') || 'Emergency contact required');
+               return false;
+            }
+            break;
+         case 3: // Personal
+            // Accessibility fields have defaults, others are optional text
+            break;
+         case 4: // Skills
+            // Checkbox and language multi-select are optional or have defaults
+            break;
+      }
+      return true;
+   };
+
+   const handleNext = () => {
+      if (validateStep(step)) {
+         setStep(s => s + 1);
+         window.scrollTo(0, 0);
+      }
+   };
 
    const handleFinish = () => {
       confetti({
@@ -840,6 +888,13 @@ export const VolunteerOnboarding: React.FC<{ user: User; onUpdate: (u: Partial<U
          <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-6 text-center">{t('onboarding.volunteer_title')}</h1>
          <div className="max-w-2xl mx-auto mb-8">
             <ProgressBar current={step} total={6} labels={[t('onboarding.contact'), t('onboarding.demographics'), t('onboarding.personal'), t('onboarding.skills'), t('onboarding.waiver'), t('onboarding.complete')]} />
+
+            {error && (
+               <div className="mb-4 p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-lg flex items-center gap-2 animate-in slide-in-from-top-2">
+                  <AlertTriangle size={18} />
+                  <span className="font-bold">{error}</span>
+               </div>
+            )}
          </div>
 
          <Card>
@@ -882,7 +937,7 @@ export const VolunteerOnboarding: React.FC<{ user: User; onUpdate: (u: Partial<U
                   </Input>
 
                   <div className="flex justify-end pt-4">
-                     <Button onClick={() => setStep(2)}>{t('common.next')}</Button>
+                     <Button onClick={handleNext}>{t('common.next')}</Button>
                   </div>
                </div>
             )}
@@ -937,7 +992,7 @@ export const VolunteerOnboarding: React.FC<{ user: User; onUpdate: (u: Partial<U
 
                   <div className="flex justify-between pt-4">
                      <Button variant="outline" onClick={() => setStep(1)}>{t('common.back')}</Button>
-                     <Button onClick={() => setStep(3)}>{t('common.next')}</Button>
+                     <Button onClick={handleNext}>{t('common.next')}</Button>
                   </div>
                </div>
             )}
@@ -985,7 +1040,7 @@ export const VolunteerOnboarding: React.FC<{ user: User; onUpdate: (u: Partial<U
 
                   <div className="flex justify-between pt-4">
                      <Button variant="outline" onClick={() => setStep(2)}>{t('common.back')}</Button>
-                     <Button onClick={() => setStep(4)}>{t('common.next')}</Button>
+                     <Button onClick={handleNext}>{t('common.next')}</Button>
                   </div>
                </div>
             )}
@@ -1020,7 +1075,7 @@ export const VolunteerOnboarding: React.FC<{ user: User; onUpdate: (u: Partial<U
 
                   <div className="flex justify-between pt-4">
                      <Button variant="outline" onClick={() => setStep(3)}>{t('common.back')}</Button>
-                     <Button onClick={() => setStep(5)}>{t('common.next')}</Button>
+                     <Button onClick={handleNext}>{t('common.next')}</Button>
                   </div>
                </div>
             )}
@@ -1184,7 +1239,7 @@ export const OpportunityBoard: React.FC<{ requests: Request[]; onAccept: (id: st
                            )}
                         </div>
                      </div>
-                     <h3 className="font-bold text-lg text-slate-900 dark:text-white mb-1">{t(`subcategory.${req.subcategory}`) || req.subcategory}</h3>
+                     <h3 className="font-bold text-lg text-slate-900 dark:text-white mb-1">{t(`subcategory.${req.subcategory.toLowerCase().replace(/[\/\s-]/g, '_')}`) || req.subcategory}</h3>
                      <div className="flex items-center text-sm text-slate-500 dark:text-slate-400 mb-4">
                         <MapPin size={14} className="mr-1" /> {req.geozone}
                      </div>
@@ -1193,7 +1248,7 @@ export const OpportunityBoard: React.FC<{ requests: Request[]; onAccept: (id: st
                         {req.isFlexible ? (
                            <span>Flexible: {req.flexStartDate} - {req.flexEndDate}</span>
                         ) : (
-                           <span>{req.date} @ {req.pickupTime || req.timeWindow}</span>
+                           <span>{req.date} @ {formatTimeWithAMPM(req.pickupTime || req.timeWindow || '')}</span>
                         )}
                      </div>
                   </div>
@@ -1230,7 +1285,7 @@ export const OpportunityBoard: React.FC<{ requests: Request[]; onAccept: (id: st
                         <>
                            <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded text-sm text-slate-700 dark:text-slate-300">
                               <div className="flex justify-between items-start mb-2">
-                                 <p className="font-bold text-lg">{t(`category.${req.category}`) || req.category} - {t(`subcategory.${req.subcategory}`) || req.subcategory}</p>
+                                 <p className="font-bold text-lg">{t(`category.${req.category}`) || req.category} - {t(`subcategory.${req.subcategory.toLowerCase().replace(/[\/\s-]/g, '_')}`) || req.subcategory}</p>
                                  {isGroup && (
                                     <span className={`text-xs px-2 py-1 rounded font-bold ${isFull ? 'bg-rose-100 text-rose-800' : 'bg-blue-100 text-blue-800'}`}>
                                        {isFull ? t('client.full') : `${spotsLeft} ${t('client.spots_remaining')}`}
@@ -1248,7 +1303,7 @@ export const OpportunityBoard: React.FC<{ requests: Request[]; onAccept: (id: st
                                     </p>
                                  </div>
                               ) : (
-                                 <p><strong>{t('common.when')}:</strong> {req.date} @ {req.timeWindow || req.pickupTime}</p>
+                                 <p><strong>{t('common.when')}:</strong> {req.date} @ {formatTimeWithAMPM(req.timeWindow || req.pickupTime || '')}</p>
                               )}
 
                               <p><strong>{t('common.where')}:</strong> {req.geozone} ({t('vol.location_hidden')})</p>
@@ -1495,9 +1550,50 @@ export const DualHistory: React.FC<{ user: User; requests: Request[] }> = ({ use
    );
 };
 
-export const SafetyReportingPage: React.FC<{ onNavigate: (p: string) => void }> = ({ onNavigate }) => {
+export const SafetyReportingPage: React.FC<{ user: User; onNavigate: (p: string) => void }> = ({ user, onNavigate }) => {
    const { t } = useTheme();
    const [submitted, setSubmitted] = useState(false);
+   const [formData, setFormData] = useState({
+      category: '',
+      incidentDate: '',
+      description: ''
+   });
+
+   const handleSubmit = async () => {
+      if (!formData.category || !formData.incidentDate || !formData.description) {
+         alert('Please fill in all fields');
+         return;
+      }
+
+      // Import safety report service and supabase
+      const { createSafetyReport } = await import('../services/safetyReportService');
+      const { supabase } = await import('../services/supabase');
+
+      // Get the authenticated user's UUID from Supabase
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+         alert('You must be logged in to submit a safety report');
+         return;
+      }
+
+      const report = await createSafetyReport({
+         reporter_id: session.user.id, // Use auth UUID, not custom user.id
+         reporter_name: user.name || 'Unknown',
+         reporter_role: user.role === 'VOLUNTEER' || user.role === 'CLIENT_VOLUNTEER' ? 'VOLUNTEER' : 'CLIENT',
+         category: formData.category,
+         incident_date: formData.incidentDate,
+         description: formData.description,
+         status: 'PENDING'
+      });
+
+      if (report) {
+         console.log('✅ Safety report submitted:', report.id);
+         setSubmitted(true);
+      } else {
+         console.error('❌ Failed to submit safety report');
+         alert('Failed to submit report. Please try again.');
+      }
+   };
 
    if (submitted) {
       return (
@@ -1517,7 +1613,15 @@ export const SafetyReportingPage: React.FC<{ onNavigate: (p: string) => void }> 
          <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-6">{t('safety.report_concern')}</h1>
          <Card>
             <div className="space-y-4">
-               <Input label={t('safety.concern_category')} aria-label={t('safety.concern_category')} title={t('safety.concern_category')} id="concernCategory" as="select">
+               <Input
+                  label={t('safety.concern_category')}
+                  aria-label={t('safety.concern_category')}
+                  title={t('safety.concern_category')}
+                  id="concernCategory"
+                  as="select"
+                  value={formData.category}
+                  onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+               >
                   <option value="">{t('common.select_category')}</option>
                   <option value="Medical Emergency">{t('safety.cat_medical')}</option>
                   <option value="Home Safety Hazard">{t('safety.cat_hazard')}</option>
@@ -1527,9 +1631,21 @@ export const SafetyReportingPage: React.FC<{ onNavigate: (p: string) => void }> 
                   <option value="Other">{t('common.other')}</option>
                </Input>
 
-               <Input label={t('safety.incident_date')} type="datetime-local" />
+               <Input
+                  label={t('safety.incident_date')}
+                  type="datetime-local"
+                  value={formData.incidentDate}
+                  onChange={(e) => setFormData({ ...formData, incidentDate: e.target.value })}
+               />
 
-               <Input label={t('safety.incident_desc')} as="textarea" rows={4} placeholder={t('safety.incident_placeholder')} />
+               <Input
+                  label={t('safety.incident_desc')}
+                  as="textarea"
+                  rows={4}
+                  placeholder={t('safety.incident_placeholder')}
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+               />
 
                <div className="p-4 bg-blue-50 dark:bg-slate-800 rounded text-sm text-blue-800 dark:text-blue-200">
                   <p className="font-bold flex items-center gap-2"><Info size={16} /> {t('common.note')}</p>
@@ -1538,7 +1654,7 @@ export const SafetyReportingPage: React.FC<{ onNavigate: (p: string) => void }> 
 
                <div className="flex justify-end gap-4 pt-4">
                   <Button variant="outline" onClick={() => onNavigate('dashboard')}>{t('common.cancel')}</Button>
-                  <Button variant="danger" onClick={() => setSubmitted(true)}>{t('safety.submit_report')}</Button>
+                  <Button variant="danger" onClick={handleSubmit}>{t('safety.submit_report')}</Button>
                </div>
             </div>
          </Card>

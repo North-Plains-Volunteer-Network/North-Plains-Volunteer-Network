@@ -23,6 +23,7 @@ export enum RequestCategory {
   SHOPPING = 'Errand',
   SOCIAL = 'Social/Emotional Support',
   HOME_HELP = 'Home Help/Safety',
+  TECHNOLOGY = 'Technology',
   OTHER = 'Other'
 }
 
@@ -47,6 +48,7 @@ export interface User {
   onboardingStep: OnboardingStep;
   intakeDate?: string; // Date of program entry
   justFinishedOnboarding?: boolean; // Transient flag to trigger welcome modal
+  emailVerified?: boolean; // Email verification status (required before full access)
 
   // Client Specific - HUD & Safety
   preferredName?: string;

@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Request, RequestStatus, User } from '../types';
 import { Card, Button, Modal, Input, StatWidget } from '../components/UI';
 import { Clock, MapPin, Calendar, CheckCircle, AlertTriangle, Heart, ArrowRight } from 'lucide-react';
+import { useTheme } from '../context/ThemeContext';
+import { formatTimeWithAMPM } from '../services/timeUtils';
 
 interface AdminAssignmentsProps {
     user: User;
@@ -150,6 +152,7 @@ const SurveyForm: React.FC<{ onSubmit: (data: any) => void; onCancel: () => void
 };
 
 export const AdminAssignments: React.FC<AdminAssignmentsProps> = ({ user, requests, onCompleteRequest, onWithdraw }) => {
+    const { t } = useTheme();
     const [completingId, setCompletingId] = useState<string | null>(null);
     const [withdrawingId, setWithdrawingId] = useState<string | null>(null);
     const [withdrawReason, setWithdrawReason] = useState('');
@@ -233,14 +236,14 @@ export const AdminAssignments: React.FC<AdminAssignmentsProps> = ({ user, reques
                                 <div className="flex flex-col md:flex-row justify-between gap-4">
                                     <div className="flex-1">
                                         <div className="flex items-start justify-between mb-2">
-                                            <h3 className="text-lg font-bold text-slate-900 dark:text-white">{req.category} - {req.subcategory}</h3>
+                                            <h3 className="text-lg font-bold text-slate-900 dark:text-white">{t(`category.${req.category}`) || req.category} - {t(`subcategory.${req.subcategory.toLowerCase().replace(/[\/\s-]/g, '_')}`) || req.subcategory}</h3>
                                             <span className="px-3 py-1 rounded-full text-xs font-bold bg-green-100 text-green-800">Active</span>
                                         </div>
                                         <p className="text-sm text-slate-600 dark:text-slate-300 mb-3">{req.description}</p>
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
                                             <div className="flex items-center text-slate-600 dark:text-slate-400">
                                                 <Calendar size={16} className="mr-2 text-brand-500" />
-                                                <span>{req.date} @ {req.timeWindow || req.pickupTime}</span>
+                                                <span>{req.date} @ {formatTimeWithAMPM(req.timeWindow || req.pickupTime || '')}</span>
                                             </div>
                                             <div className="flex items-center text-slate-600 dark:text-slate-400">
                                                 <MapPin size={16} className="mr-2 text-brand-500" />

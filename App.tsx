@@ -1,21 +1,39 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Layout } from './components/Layout';
 import { User, UserRole, Request, OnboardingStep, RequestStatus } from './types';
 import { MOCK_USERS, MOCK_REQUESTS } from './services/mockData';
+import { updateUserProfile } from './services/userService';
+import { getRequests } from './services/requestService';
 import { PublicHome, LoginScreen, AboutPage, RegisterScreen, DonatePage } from './screens/Public';
-import { ClientDashboard, CreateRequestFlow, DualDashboard, ClientResources } from './screens/Client';
+import { ClientDashboard, CreateRequestFlow, DualDashboard } from './screens/Client';
+import { TrainingCenter } from './screens/TrainingCenter';
 import { VolunteerDashboard, VolunteerOnboarding, OpportunityBoard, VolunteerResources, VolunteerHistory, SafetyReportingPage, CommunityResources, DualHistory, VolunteerSettings } from './screens/Volunteer';
 import { AdminDashboard, AdminAssignments } from './screens/Admin';
 import { UserProfile } from './screens/Profile';
 import { ThemeProvider } from './context/ThemeContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import { TermsOfService } from './screens/TermsOfService';
 import { PrivacyPolicy } from './screens/PrivacyPolicy';
 
 const AppContent: React.FC = () => {
-  const [user, setUser] = useState<User | null>(null);
+  const { user, signOut, refreshProfile } = useAuth();
   const [currentPage, setCurrentPage] = useState('home');
   const [requests, setRequests] = useState<Request[]>(MOCK_REQUESTS);
+
+  // Load requests from Supabase on mount and when user changes
+  useEffect(() => {
+    const loadRequests = async () => {
+      const supabaseRequests = await getRequests();
+      if (supabaseRequests.length > 0) {
+        setRequests(supabaseRequests);
+      }
+    };
+
+    if (user) {
+      loadRequests();
+    }
+  }, [user]);
 
   // Simple Router Logic
   const handleNavigate = (page: string) => {
@@ -23,45 +41,44 @@ const AppContent: React.FC = () => {
     window.scrollTo(0, 0);
   };
 
-  const handleLogin = (role: UserRole) => {
-    const mockUser = Object.values(MOCK_USERS).find(u => u.role === role);
-    if (mockUser) {
-      setUser(mockUser);
-      handleNavigate('dashboard');
+  // Auto-redirect to dashboard on login
+  React.useEffect(() => {
+    if (user && (currentPage === 'login' || currentPage === 'register' || currentPage === 'home')) {
+      setCurrentPage('dashboard');
     }
-  };
+  }, [user]);
 
-  const handleRegister = (role: UserRole, data: any) => {
-    // Create a new mock user
-    const newUser: User = {
-      id: `u_${Date.now()}`,
-      name: data.name,
-      email: data.email,
-      role: role,
-      onboardingStep: OnboardingStep.PROFILE, // Needs onboarding
-    };
-    setUser(newUser);
-    handleNavigate('dashboard');
-  };
+  /* REMOVED: handleLogin and handleRegister are now handled inside LoginScreen/RegisterScreen */
 
   const handleLogout = () => {
-    setUser(null);
+    signOut();
     handleNavigate('home');
   };
 
-  const handleUpdateUser = (updates: Partial<User>) => {
+  const handleUpdateUser = async (updates: Partial<User>) => {
     if (user) {
-      setUser({ ...user, ...updates });
+      // Optimistic update or wait? Let's just update backend and refresh
+      try {
+        await updateUserProfile(user.id, updates);
+        await refreshProfile();
+      } catch (err) {
+        console.error("Failed to update user", err);
+      }
     }
   };
 
   // --- Client Actions ---
-  const handleCreateRequest = (requestData: Partial<Request>) => {
-    const newRequest: Request = {
+  const handleCreateRequest = async (requestData: Partial<Request>) => {
+    if (!user) return;
+
+    // Import request service
+    const { createRequest, getRequests } = await import('./services/requestService');
+
+    // Create request in Supabase
+    const newRequest = await createRequest({
       ...requestData,
-      id: `r${Date.now()}`,
-      clientId: user?.id || 'unknown',
-      clientName: user?.name || 'Unknown',
+      clientId: user.id,
+      clientName: user.name || 'Unknown',
       status: RequestStatus.PENDING,
       date: requestData.date || new Date().toISOString().split('T')[0],
       category: requestData.category!,
@@ -69,9 +86,22 @@ const AppContent: React.FC = () => {
       description: requestData.description || '',
       timeWindow: requestData.timeWindow || '',
       location: requestData.location || '',
-      geozone: 'North Plains - Central', // Default logic
-    };
-    setRequests([newRequest, ...requests]);
+      geozone: requestData.geozone || 'North Plains - Central',
+    });
+
+    if (newRequest) {
+      console.log('✅ Request created successfully:', newRequest.id);
+      // Reload all requests from Supabase to get the latest data
+      const allRequests = await getRequests();
+      setRequests(allRequests);
+      console.log('📊 Loaded requests:', allRequests.length);
+
+      // Small delay to ensure state updates before navigation
+      await new Promise(resolve => setTimeout(resolve, 100));
+    } else {
+      console.error('❌ Failed to create request');
+    }
+
     handleNavigate('dashboard');
   };
 
@@ -162,7 +192,7 @@ const AppContent: React.FC = () => {
         : r
     ));
     if (user) {
-      setUser({ ...user, totalHours: (user.totalHours || 0) + hoursLogged });
+      updateUserProfile(user.id, { totalHours: (user.totalHours || 0) + hoursLogged }).then(() => refreshProfile());
     }
   };
 
@@ -273,8 +303,8 @@ const AppContent: React.FC = () => {
 
     if (!user) {
       switch (currentPage) {
-        case 'login': return <LoginScreen onLogin={handleLogin} onNavigate={handleNavigate} />;
-        case 'register': return <RegisterScreen onRegister={handleRegister} />;
+        case 'login': return <LoginScreen onNavigate={handleNavigate} />;
+        case 'register': return <RegisterScreen onNavigate={handleNavigate} />;
         case 'donate': return <DonatePage />;
         case 'terms-of-service': return <TermsOfService onBack={() => handleNavigate('home')} />;
         case 'privacy-policy': return <PrivacyPolicy onBack={() => handleNavigate('home')} />;
@@ -291,8 +321,8 @@ const AppContent: React.FC = () => {
         case 'create-request':
           return <CreateRequestFlow onSubmit={handleCreateRequest} onCancel={() => handleNavigate('dashboard')} />;
         case 'resources': return <CommunityResources />;
-        case 'report-safety': return <SafetyReportingPage onNavigate={handleNavigate} />;
-        case 'client-resources': return <ClientResources />;
+        case 'report-safety': return <SafetyReportingPage user={user!} onNavigate={handleNavigate} />;
+        case 'client-resources': return <TrainingCenter user={user} onUpdateUser={handleUpdateUser} />;
         default: return (
           <ClientDashboard
             user={user}
@@ -330,7 +360,7 @@ const AppContent: React.FC = () => {
         case 'volunteer-resources':
           return <VolunteerResources user={user} onUpdate={handleUpdateUser} />;
         case 'report-safety':
-          return <SafetyReportingPage onNavigate={handleNavigate} />;
+          return <SafetyReportingPage user={user} onNavigate={handleNavigate} />;
         case 'community-resources':
           return <CommunityResources />;
         case 'settings':
@@ -382,9 +412,9 @@ const AppContent: React.FC = () => {
         case 'volunteer-resources':
           return <VolunteerResources user={user} onUpdate={handleUpdateUser} />;
         case 'client-resources':
-          return <ClientResources />;
+          return <TrainingCenter user={user} onUpdateUser={handleUpdateUser} />;
         case 'report-safety':
-          return <SafetyReportingPage onNavigate={handleNavigate} />;
+          return <SafetyReportingPage user={user} onNavigate={handleNavigate} />;
         case 'community-resources':
           return <CommunityResources />;
         case 'resources':
@@ -415,6 +445,17 @@ const AppContent: React.FC = () => {
       return <AdminDashboard requests={requests} onUpdateRequest={handleUpdateRequest} />;
     }
 
+    // Handle GUEST role (users who just registered but profile isn't fully set up)
+    if (user.role === UserRole.GUEST) {
+      // Show a loading or onboarding prompt
+      return (
+        <div className="max-w-2xl mx-auto py-10 text-center">
+          <h1 className="text-2xl font-bold mb-4">Setting up your account...</h1>
+          <p className="text-slate-600">Please wait while we prepare your dashboard.</p>
+        </div>
+      );
+    }
+
     return <div>Unknown State</div>;
   };
 
@@ -431,9 +472,11 @@ const AppContent: React.FC = () => {
 };
 
 const App: React.FC = () => (
-  <ThemeProvider>
-    <AppContent />
-  </ThemeProvider>
+  <AuthProvider>
+    <ThemeProvider>
+      <AppContent />
+    </ThemeProvider>
+  </AuthProvider>
 );
 
 export default App;

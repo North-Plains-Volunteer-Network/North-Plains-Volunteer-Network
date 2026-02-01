@@ -4,9 +4,13 @@ import { Card, Button, StatusBadge, StatWidget, Modal, Input, ProgressBar, Accor
 import { Calendar, MapPin, Clock, AlertTriangle, CheckCircle, ShieldCheck, CreditCard, Heart, ChevronRight, ChevronLeft, Phone, Mail, HelpCircle, Users, AlertCircle, Star, PlayCircle, Settings, X, MessageSquare } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { VolunteerDashboard } from './Volunteer';
+import { OpportunitiesPage } from './OpportunitiesPage';
 import { MOCK_USERS } from '../services/mockData';
 import { useTheme } from '../context/ThemeContext';
 import { downloadICS } from '../utils/export';
+import { formatTimeWithAMPM } from '../services/timeUtils';
+import { UnifiedOnboarding } from './UnifiedOnboarding';
+import { TrainingCenter } from './TrainingCenter';
 
 interface ClientProps {
    user: User;
@@ -169,7 +173,7 @@ export const ClientDashboard: React.FC<ClientProps> = ({ user, requests, onCreat
 
    // Check for onboarding
    if (user.onboardingStep !== OnboardingStep.COMPLETE) {
-      return <ClientOnboarding user={user} onUpdate={onUpdateUser} onNavigate={onNavigate} />;
+      return <UnifiedOnboarding user={user} onUpdate={onUpdateUser} onNavigate={onNavigate} />;
    }
 
    // Check for mandatory surveys (1 hour after service completion)
@@ -393,15 +397,24 @@ export const ClientDashboard: React.FC<ClientProps> = ({ user, requests, onCreat
 };
 
 export const DualDashboard: React.FC<DualProps> = ({ user, requests, actions }) => {
-   const [view, setView] = useState<'CLIENT' | 'VOLUNTEER'>('CLIENT');
+   const [view, setView] = useState<'CLIENT' | 'VOLUNTEER' | 'OPPORTUNITIES'>('CLIENT');
    const { t } = useTheme();
+
+   // Check for onboarding - dual users go through unified onboarding
+   if (user.onboardingStep !== OnboardingStep.COMPLETE) {
+      return <UnifiedOnboarding user={user} onUpdate={actions.onUpdateUser} onNavigate={actions.onNavigate} />;
+   }
 
    return (
       <div className="space-y-6">
          <Tabs
-            tabs={[t('client.active_upcoming'), t('vol.my_assignments')]}
-            activeTab={view === 'CLIENT' ? t('client.active_upcoming') : t('vol.my_assignments')}
-            onChange={(tab) => setView(tab === t('client.active_upcoming') ? 'CLIENT' : 'VOLUNTEER')}
+            tabs={[t('client.active_upcoming'), t('vol.my_assignments'), 'Opportunities']}
+            activeTab={view === 'CLIENT' ? t('client.active_upcoming') : view === 'VOLUNTEER' ? t('vol.my_assignments') : 'Opportunities'}
+            onChange={(tab) => {
+               if (tab === t('client.active_upcoming')) setView('CLIENT');
+               else if (tab === t('vol.my_assignments')) setView('VOLUNTEER');
+               else setView('OPPORTUNITIES');
+            }}
          />
 
          {view === 'CLIENT' ? (
@@ -415,7 +428,7 @@ export const DualDashboard: React.FC<DualProps> = ({ user, requests, actions }) 
                onUpdateRequest={actions.onUpdateRequest}
                onCancelRequest={actions.onCancelRequest}
             />
-         ) : (
+         ) : view === 'VOLUNTEER' ? (
             <VolunteerDashboard
                user={user}
                requests={requests}
@@ -425,6 +438,13 @@ export const DualDashboard: React.FC<DualProps> = ({ user, requests, actions }) 
                onCompleteRequest={actions.onCompleteRequest}
                onWithdraw={actions.onWithdraw}
             />
+         ) : (
+            <OpportunitiesPage
+               user={user}
+               requests={requests}
+               onAccept={actions.onAccept}
+               onNavigate={actions.onNavigate}
+            />
          )}
       </div>
    );
@@ -433,6 +453,8 @@ export const DualDashboard: React.FC<DualProps> = ({ user, requests, actions }) 
 const ClientOnboarding: React.FC<{ user: User; onUpdate: (u: Partial<User>) => void; onNavigate: (p: string) => void }> = ({ user, onUpdate, onNavigate }) => {
    const { t } = useTheme();
    const [step, setStep] = useState(1);
+   const [error, setError] = useState<string | null>(null);
+   const today = new Date().toISOString().split('T')[0]; // Get today's date in YYYY-MM-DD format
    const [formData, setFormData] = useState<Partial<User>>({
       ...user,
       incomeSources: user.incomeSources || [],
@@ -482,7 +504,66 @@ const ClientOnboarding: React.FC<{ user: User; onUpdate: (u: Partial<User>) => v
       }
    };
 
-   const handleNext = () => setStep(s => s + 1);
+   const validateStep = (currentStep: number): boolean => {
+      setError(null);
+      switch (currentStep) {
+         case 1: // Identity
+            if (!formData.name || !formData.dob) {
+               setError(t('common.fill_required'));
+               return false;
+            }
+            break;
+         case 2: // Demographics
+            if (!formData.gender || !formData.ethnicity || !formData.race || !formData.preferredLanguage) {
+               setError(t('common.fill_required'));
+               return false;
+            }
+            if (langSelect === 'Other' && !formData.preferredLanguage) {
+               setError(t('common.fill_required'));
+               return false;
+            }
+            break;
+         case 3: // Household
+            if (!formData.householdType || !formData.householdSize || !formData.incomeRange) {
+               setError(t('common.fill_required'));
+               return false;
+            }
+            break;
+         case 4: // Disability
+            if (formData.disabilityStatus === undefined) {
+               setError(t('common.fill_required'));
+               return false;
+            }
+            if (formData.disabilityStatus === true && (!formData.disabilityType || formData.affectsIndependence === undefined)) {
+               setError(t('common.fill_required'));
+               return false;
+            }
+            break;
+         case 5: // Contact
+            if (!formData.phone && !formData.email) {
+               setError(t('onboarding.contact_required')); // Ensure this key exists or use fallback
+               return false;
+            }
+            if (!formData.preferredContactMethod) {
+               setError(t('common.fill_required'));
+               return false;
+            }
+            // Emergency Contact Validation
+            if (!formData.emergencyContact?.name || !formData.emergencyContact?.phone || !formData.emergencyContact?.relation) {
+               setError(t('onboarding.emergency_required') || "Emergency contact details are required.");
+               return false;
+            }
+            break;
+      }
+      return true;
+   };
+
+   const handleNext = () => {
+      if (validateStep(step)) {
+         setStep(s => s + 1);
+         window.scrollTo(0, 0);
+      }
+   };
    const handleFinish = () => {
       confetti({
          particleCount: 100,
@@ -504,6 +585,13 @@ const ClientOnboarding: React.FC<{ user: User; onUpdate: (u: Partial<User>) => v
          <p className="text-slate-600 dark:text-slate-300 text-center mb-8">{t('onboarding.welcome_desc')}</p>
 
          <ProgressBar current={step} total={6} labels={[t('onboarding.step_1_title').split(': ')[1], t('onboarding.step_2_title').split(': ')[1], t('onboarding.step_3_title').split(': ')[1], t('onboarding.step_4_title').split(': ')[1], t('onboarding.step_5_title').split(': ')[1], t('onboarding.waiver')]} />
+
+         {error && (
+            <div className="mb-4 p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-lg flex items-center gap-2 animate-in slide-in-from-top-2">
+               <AlertTriangle size={18} />
+               <span className="font-bold">{error}</span>
+            </div>
+         )}
 
          <Card>
             {step === 1 && (
@@ -769,7 +857,7 @@ const RequestCard: React.FC<{ request: Request; onEdit?: (req: Request) => void;
          <div className="flex justify-between items-start mb-4">
             <div>
                <h4 className="font-bold text-lg text-slate-900 dark:text-white">{t(`category.${request.category}`) || request.category}</h4>
-               <p className="text-slate-500 dark:text-slate-300 text-sm">{t(`subcategory.${request.subcategory}`) || request.subcategory}</p>
+               <p className="text-slate-500 dark:text-slate-300 text-sm">{t(`subcategory.${request.subcategory.toLowerCase().replace(/[\/\s-]/g, '_')}`) || request.subcategory}</p>
             </div>
             <StatusBadge status={request.status} />
          </div>
@@ -777,7 +865,7 @@ const RequestCard: React.FC<{ request: Request; onEdit?: (req: Request) => void;
          <div className="space-y-3 text-sm text-slate-700 dark:text-slate-300 mb-6">
             <div className="flex items-center">
                <Calendar className="w-4 h-4 mr-2 text-slate-400 dark:text-slate-500" />
-               <span>{request.date} @ {request.timeWindow || request.appointmentTime}</span>
+               <span>{request.date} @ {formatTimeWithAMPM(request.timeWindow || request.appointmentTime || '')}</span>
             </div>
             <div className="flex items-center">
                <MapPin className="w-4 h-4 mr-2 text-slate-400 dark:text-slate-500" />
@@ -1107,6 +1195,7 @@ export const CreateRequestFlow: React.FC<{ onSubmit: (data: Partial<Request>) =>
       category: RequestCategory.RIDE,
       isRecurring: false
    });
+   const [showUrgentWarning, setShowUrgentWarning] = useState(false);
 
    const SUBCATEGORY_OPTIONS: Record<string, string[]> = {
       [RequestCategory.RIDE]: ['Medical Appointment', 'Work/Job Interview', 'Social Event', 'Errand Run', 'Other'],
@@ -1118,6 +1207,21 @@ export const CreateRequestFlow: React.FC<{ onSubmit: (data: Partial<Request>) =>
    const categories = Object.values(RequestCategory);
    const handleNext = () => setStep(s => s + 1);
    const handleBack = () => setStep(s => s - 1);
+
+   const checkUrgentDate = (dateVal: string) => {
+      if (!dateVal) return;
+      const [year, month, day] = dateVal.split('-').map(Number);
+      const selectedDate = new Date(year, month - 1, day);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const diffTime = selectedDate.getTime() - today.getTime();
+      const diffDays = diffTime / (1000 * 60 * 60 * 24);
+
+      if (diffDays >= 0 && diffDays < 2) {
+         setShowUrgentWarning(true);
+      }
+   };
 
    return (
       <div className="max-w-2xl mx-auto py-8">
@@ -1194,7 +1298,15 @@ export const CreateRequestFlow: React.FC<{ onSubmit: (data: Partial<Request>) =>
 
                      {data.isFlexible ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-in fade-in">
-                           <Input label={t('request.start_date')} type="date" value={data.flexStartDate || ''} onChange={e => setData({ ...data, flexStartDate: e.target.value })} />
+                           <Input
+                              label={t('request.start_date')}
+                              type="date"
+                              value={data.flexStartDate || ''}
+                              onChange={e => {
+                                 setData({ ...data, flexStartDate: e.target.value });
+                                 checkUrgentDate(e.target.value);
+                              }}
+                           />
                            <Input label={t('request.end_date')} type="date" value={data.flexEndDate || ''} onChange={e => setData({ ...data, flexEndDate: e.target.value })} />
                            <div className="md:col-span-2">
                               <Input label={t('request.preferred_times')} placeholder={t('request.preferred_times_placeholder')} value={data.flexTimes || ''} onChange={e => setData({ ...data, flexTimes: e.target.value })} />
@@ -1202,7 +1314,15 @@ export const CreateRequestFlow: React.FC<{ onSubmit: (data: Partial<Request>) =>
                         </div>
                      ) : (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-in fade-in">
-                           <Input label={t('request.date_needed')} type="date" value={data.date || ''} onChange={e => setData({ ...data, date: e.target.value })} />
+                           <Input
+                              label={t('request.date_needed')}
+                              type="date"
+                              value={data.date || ''}
+                              onChange={e => {
+                                 setData({ ...data, date: e.target.value });
+                                 checkUrgentDate(e.target.value);
+                              }}
+                           />
                            <Input label={t('request.time_needed')} type="time" value={data.timeWindow || ''} onChange={e => setData({ ...data, timeWindow: e.target.value })} />
                         </div>
                      )}
@@ -1321,6 +1441,28 @@ export const CreateRequestFlow: React.FC<{ onSubmit: (data: Partial<Request>) =>
                </div>
             )}
          </Card>
+
+         {/* Urgent Request Warning Modal */}
+         {showUrgentWarning && (
+            <Modal isOpen={true} onClose={() => setShowUrgentWarning(false)} title="Urgent Request Warning">
+               <div className="space-y-4">
+                  <div className="bg-amber-50 dark:bg-amber-900/30 p-4 rounded-lg flex items-start gap-3 border border-amber-200 dark:border-amber-800">
+                     <AlertCircle className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                     <div>
+                        <h4 className="font-bold text-amber-800 dark:text-amber-300">Notice: Short Notice Request</h4>
+                        <p className="text-sm text-amber-700 dark:text-amber-400 mt-1">
+                           Requests made within 48 hours are difficult to fill. We will try our best, but cannot guarantee a volunteer will be available.
+                        </p>
+                     </div>
+                  </div>
+                  <div className="flex justify-end pt-2">
+                     <Button onClick={() => setShowUrgentWarning(false)}>
+                        I Understand
+                     </Button>
+                  </div>
+               </div>
+            </Modal>
+         )}
       </div>
    );
 };

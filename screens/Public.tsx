@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
+import { supabase } from '../services/supabase';
 import { Button, Card, Input, Accordion, Logo } from '../components/UI';
 import { UserRole } from '../types';
 import { Heart, Users, Calendar, ShieldCheck, ArrowRight, UserPlus, HelpCircle, CheckCircle, Target, HandHeart, Info, Phone, QrCode } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
+import { useAuth } from '../context/AuthContext';
 
 interface PublicProps {
   onLogin: (role: UserRole) => void;
@@ -242,8 +244,51 @@ export const DonatePage: React.FC = () => {
   );
 };
 
-export const LoginScreen: React.FC<{ onLogin: (r: UserRole) => void; onNavigate: (p: string) => void }> = ({ onLogin, onNavigate }) => {
+export const LoginScreen: React.FC<{ onNavigate: (p: string) => void }> = ({ onNavigate }) => {
   const { t } = useTheme();
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { debugLogin } = useAuth(); // Destructure debugLogin
+  const [identifier, setIdentifier] = useState(''); // Email or Phone
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const handleLogin = async () => {
+    setLoading(true);
+    setError(null);
+
+    let loginEmail = identifier.trim();
+
+    // Check if input is a phone number (digits only or basic phone format)
+    const isPhone = /^\+?[\d\s-()]{7,}$/.test(loginEmail) && !loginEmail.includes('@');
+
+    if (isPhone) {
+      // Look up email by phone number using our secure RPC function
+      const { data, error: lookupError } = await supabase.rpc('get_email_by_phone', {
+        phone_input: loginEmail
+      });
+
+      if (lookupError || !data) {
+        setLoading(false);
+        setError('Phone number not found. Please try again or use your email.');
+        return;
+      }
+
+      loginEmail = data; // Use the found email for login
+    }
+
+    const { error } = await supabase.auth.signInWithPassword({
+      email: loginEmail,
+      password,
+    });
+    setLoading(false);
+    if (error) {
+      setError(error.message);
+    } else {
+      // Navigation is handled by App.tsx reacting to user state change
+    }
+  };
+
   return (
     <div className="max-w-md mx-auto py-10">
       <Card title={t('signin_title')}>
@@ -251,20 +296,40 @@ export const LoginScreen: React.FC<{ onLogin: (r: UserRole) => void; onNavigate:
           <p className="text-sm text-slate-600 mb-4">
             {t('welcome_back')}
           </p>
+
           {/* MOCK LOGIN CONTROLS */}
           <div className="bg-amber-50 p-4 rounded text-xs text-amber-800 border border-amber-200 mb-4">
             <strong>{t('demo_mode')}</strong> {t('demo_instruction')}
             <div className="grid gap-2 mt-2">
-              <button onClick={() => onLogin(UserRole.CLIENT)} className="underline text-left">{t('login_client')}</button>
-              <button onClick={() => onLogin(UserRole.VOLUNTEER)} className="underline text-left">{t('login_volunteer')}</button>
-              <button onClick={() => onLogin(UserRole.ADMIN)} className="underline text-left">{t('login_admin')}</button>
-              <button onClick={() => onLogin(UserRole.CLIENT_VOLUNTEER)} className="underline text-left">{t('login_dual')}</button>
+              <button onClick={() => debugLogin(UserRole.CLIENT)} className="underline text-left">{t('login_client')}</button>
+              <button onClick={() => debugLogin(UserRole.VOLUNTEER)} className="underline text-left">{t('login_volunteer')}</button>
+              <button onClick={() => debugLogin(UserRole.ADMIN)} className="underline text-left">{t('login_admin')}</button>
+              <button onClick={() => debugLogin(UserRole.CLIENT_VOLUNTEER)} className="underline text-left">{t('login_dual')}</button>
             </div>
           </div>
 
-          <Input label={t('email_label')} type="email" placeholder={t('email_placeholder')} />
-          <Input label={t('password_label')} type="password" />
-          <Button className="w-full">{t('signin_btn')}</Button>
+          {error && (
+            <div className="bg-red-50 text-red-600 p-3 rounded text-sm">
+              {error}
+            </div>
+          )}
+
+          <Input
+            label={t('email_label') + ' / Phone Number'}
+            type="text"
+            placeholder="Email or Phone Number"
+            value={identifier}
+            onChange={(e) => setIdentifier(e.target.value)}
+          />
+          <Input
+            label={t('password_label')}
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+          <Button className="w-full" onClick={handleLogin} disabled={loading}>
+            {loading ? 'Logging in...' : t('signin_btn')}
+          </Button>
 
           <div className="relative py-2">
             <div className="absolute inset-0 flex items-center">
@@ -284,15 +349,83 @@ export const LoginScreen: React.FC<{ onLogin: (r: UserRole) => void; onNavigate:
   );
 };
 
-export const RegisterScreen: React.FC<{ onRegister: (role: UserRole, data: any) => void }> = ({ onRegister }) => {
+export const RegisterScreen: React.FC<{ onNavigate: (p: string) => void }> = ({ onNavigate }) => {
   const { t } = useTheme();
   const [step, setStep] = useState(1);
   const [selectedRole, setSelectedRole] = useState<UserRole | null>(null);
   const [form, setForm] = useState({ name: '', email: '', password: '' });
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
   const handleRoleSelect = (role: UserRole) => {
     setSelectedRole(role);
     setStep(2);
+  };
+
+  // Success State for Email Verification
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  const handleRegister = async () => {
+    if (!selectedRole || loading) return; // Prevent double-submit
+    setLoading(true);
+    setError(null);
+
+    const { data, error } = await supabase.auth.signUp({
+      email: form.email,
+      password: form.password,
+      options: {
+        data: {
+          full_name: form.name,
+          role: selectedRole,
+        },
+        emailRedirectTo: window.location.origin,
+      },
+    });
+
+    if (error) {
+      setLoading(false);
+      if (error.message.includes('security purposes')) {
+        setError("Please wait a minute before trying to register again (Security limit).");
+      } else if (error.message.includes('already registered') || error.message.includes('already exists')) {
+        setError("This email is already registered. Please log in instead.");
+      } else {
+        setError(error.message);
+      }
+      return;
+    }
+
+    // Check if user already exists (Supabase sometimes returns success for existing users)
+    if (!data.user) {
+      setLoading(false);
+      setError("Registration failed. Please try again or log in if you already have an account.");
+      return;
+    }
+
+    // Create profile in database
+    const { createUserProfile } = await import('../services/userService');
+    const profile = await createUserProfile(
+      data.user.id,
+      form.email,
+      form.name,
+      selectedRole
+    );
+
+    if (!profile) {
+      setLoading(false);
+      setError("Failed to create user profile. This email may already be registered. Please try logging in instead.");
+      return;
+    }
+
+    // Check if session was created (Auto-login) or if email confirmation is needed
+    if (data.session) {
+      // User is logged in, App.tsx will handle redirect to onboarding
+      setLoading(false);
+    } else {
+      // Email confirmation required, but profile is created
+      // User can log in after confirming email
+      setLoading(false);
+      setSuccessMsg("Account created successfully! Please check your email to verify your account, then log in to complete your intake process.");
+    }
   };
 
   return (
@@ -335,6 +468,17 @@ export const RegisterScreen: React.FC<{ onRegister: (role: UserRole, data: any) 
               <h3 className="font-bold text-lg mb-2">{t('register.dual_title')}</h3>
               <p className="text-sm text-slate-500">{t('register.dual_desc')}</p>
             </div>
+
+            <div
+              onClick={() => handleRoleSelect(UserRole.ADMIN)}
+              className="bg-white p-6 rounded-xl border-2 border-slate-200 hover:border-slate-800 hover:shadow-lg cursor-pointer transition-all flex flex-col items-center"
+            >
+              <div className="p-4 bg-slate-100 rounded-full text-slate-800 mb-4">
+                <ShieldCheck size={32} />
+              </div>
+              <h3 className="font-bold text-lg mb-2">Admin</h3>
+              <p className="text-sm text-slate-500">Staff & Management</p>
+            </div>
           </div>
         </div>
       )}
@@ -342,15 +486,30 @@ export const RegisterScreen: React.FC<{ onRegister: (role: UserRole, data: any) 
       {step === 2 && selectedRole && (
         <div className="max-w-md mx-auto">
           <Card title={
-            selectedRole === UserRole.CLIENT_VOLUNTEER ? t('register.create_dual') :
-              selectedRole === UserRole.CLIENT ? t('register.create_client') : t('register.create_volunteer')
+            selectedRole === UserRole.ADMIN ? 'Create Admin Account' :
+              selectedRole === UserRole.CLIENT_VOLUNTEER ? t('register.create_dual') :
+                selectedRole === UserRole.CLIENT ? t('register.create_client') : t('register.create_volunteer')
           }>
             <div className="space-y-4">
+              {error && (
+                <div className="bg-red-50 text-red-600 p-3 rounded text-sm">
+                  {error}
+                </div>
+              )}
+              {successMsg && (
+                <div className="bg-green-50 text-green-700 p-4 rounded text-sm border border-green-200">
+                  <div className="flex items-center gap-2 font-bold mb-1">
+                    <CheckCircle size={18} /> Success!
+                  </div>
+                  {successMsg}
+                  <Button className="w-full mt-4" variant="outline" onClick={() => onNavigate('login')}>Go to Login</Button>
+                </div>
+              )}
               <Input label={t('register.full_name')} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Jane Doe" />
               <Input label={t('email_label')} type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="jane@example.com" />
               <Input label={t('register.create_password')} type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} />
               <div className="pt-4">
-                <Button className="w-full" onClick={() => onRegister(selectedRole, form)}>{t('register.create_account_btn')}</Button>
+                <Button className="w-full" onClick={handleRegister} disabled={loading}>{loading ? 'Creating Account...' : t('register.create_account_btn')}</Button>
                 <button onClick={() => setStep(1)} className="w-full mt-4 text-sm text-slate-500 hover:text-slate-800">{t('register.back_role')}</button>
               </div>
             </div>
