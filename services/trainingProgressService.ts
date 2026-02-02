@@ -3,8 +3,14 @@ import { supabase } from './supabase';
 export interface TrainingProgress {
     id?: string;
     user_id: string;
+    // Legacy single-role fields
     platform_video_watched: boolean;
     safety_video_watched: boolean;
+    // Role-specific fields for dual users
+    volunteer_platform_watched?: boolean;
+    volunteer_safety_watched?: boolean;
+    client_platform_watched?: boolean;
+    client_safety_watched?: boolean;
     quiz_score?: number;
     training_complete: boolean;
     completed_at?: string;

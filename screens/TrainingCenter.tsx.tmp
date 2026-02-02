@@ -1,0 +1,776 @@
+﻿import React, { useState, useEffect } from 'react';
+import { User, UserRole } from '../types';
+import { Card, Button, ProgressBar } from '../components/UI';
+import { CheckCircle, Circle, PlayCircle, FileText, ShieldCheck, Mail, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react';
+import { useTheme } from '../context/ThemeContext';
+import { BackgroundCheckModal } from './Volunteer';
+
+interface TrainingCenterProps {
+    user: User;
+    onUpdateUser: (updates: Partial<User>) => void;
+}
+
+export const TrainingCenter: React.FC<TrainingCenterProps> = ({ user, onUpdateUser }) => {
+    const { t } = useTheme();
+
+    // Role-specific video states for dual users
+    const [volunteerPlatformWatched, setVolunteerPlatformWatched] = useState(false);
+    const [volunteerSafetyWatched, setVolunteerSafetyWatched] = useState(false);
+    const [clientPlatformWatched, setClientPlatformWatched] = useState(false);
+    const [clientSafetyWatched, setClientSafetyWatched] = useState(false);
+
+    // Legacy single-role states (for backward compatibility)
+    const [platformVideoWatched, setPlatformVideoWatched] = useState(false);
+    const [safetyVideoWatched, setSafetyVideoWatched] = useState(false);
+
+    const [showBgModal, setShowBgModal] = useState(false);
+
+    const isDualRole = user.role === UserRole.CLIENT_VOLUNTEER;
+
+    // Accordion state for each section
+    const [expandedSections, setExpandedSections] = useState({
+        email: false,
+        // Single role sections
+        platform: false,
+        safety: false,
+        services: false,
+        background: false,
+        // Dual role sections
+        volunteerTraining: false,
+        clientTraining: false,
+        volunteerPlatform: false,
+        volunteerSafety: false,
+        clientPlatform: false,
+        clientSafety: false
+    });
+
+    const toggleSection = (section: keyof typeof expandedSections) => {
+        setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
+    };
+
+    // Load existing progress from Supabase on mount
+    useEffect(() => {
+        const loadProgress = async () => {
+            const { getTrainingProgress } = await import('../services/trainingProgressService');
+            const { supabase } = await import('../services/supabase');
+
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) return;
+
+            const progress = await getTrainingProgress(session.user.id);
+            if (progress) {
+                if (isDualRole) {
+                    // Load role-specific progress for dual users
+                    setVolunteerPlatformWatched(progress.volunteer_platform_watched || false);
+                    setVolunteerSafetyWatched(progress.volunteer_safety_watched || false);
+                    setClientPlatformWatched(progress.client_platform_watched || false);
+                    setClientSafetyWatched(progress.client_safety_watched || false);
+                } else {
+                    // Load legacy progress for single-role users
+                    setPlatformVideoWatched(progress.platform_video_watched || false);
+                    setSafetyVideoWatched(progress.safety_video_watched || false);
+                }
+                console.log('✅ Loaded training progress:', progress);
+            }
+        };
+
+        loadProgress();
+    }, [isDualRole]);
+
+    // Save progress to Supabase whenever video status changes
+    const saveProgress = async (role: 'volunteer' | 'client' | 'single', platform: boolean, safety: boolean) => {
+        const { saveTrainingProgress } = await import('../services/trainingProgressService');
+        const { supabase } = await import('../services/supabase');
+
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) return;
+
+        if (isDualRole) {
+            // Save role-specific progress for dual users
+            await saveTrainingProgress(session.user.id, {
+                volunteer_platform_watched: role === 'volunteer' ? platform : volunteerPlatformWatched,
+                volunteer_safety_watched: role === 'volunteer' ? safety : volunteerSafetyWatched,
+                client_platform_watched: role === 'client' ? platform : clientPlatformWatched,
+                client_safety_watched: role === 'client' ? safety : clientSafetyWatched,
+                training_complete: false
+            });
+        } else {
+            // Save legacy progress for single-role users
+            await saveTrainingProgress(session.user.id, {
+                platform_video_watched: platform,
+                safety_video_watched: safety,
+                training_complete: false
+            });
+        }
+
+        console.log('✅ Training progress saved:', { role, platform, safety });
+    };
+
+    const handlePlatformVideoWatched = () => {
+        setPlatformVideoWatched(true);
+        saveProgress('single', true, safetyVideoWatched);
+    };
+
+    const handleSafetyVideoWatched = () => {
+        setSafetyVideoWatched(true);
+        saveProgress('single', platformVideoWatched, true);
+    };
+
+    // Handlers for volunteer training
+    const handleVolunteerPlatformWatched = () => {
+        setVolunteerPlatformWatched(true);
+        saveProgress('volunteer', true, volunteerSafetyWatched);
+    };
+
+    const handleVolunteerSafetyWatched = () => {
+        setVolunteerSafetyWatched(true);
+        saveProgress('volunteer', volunteerPlatformWatched, true);
+    };
+
+    // Handlers for client training
+    const handleClientPlatformWatched = () => {
+        setClientPlatformWatched(true);
+        saveProgress('client', true, clientSafetyWatched);
+    };
+
+    const handleClientSafetyWatched = () => {
+        setClientSafetyWatched(true);
+        saveProgress('client', clientPlatformWatched, true);
+    };
+
+    // Calculate completion status
+    const emailVerified = user.emailVerified || false;
+    const backgroundCheckSubmitted = user.backgroundCheckStatus !== 'NOT_STARTED';
+    const trainingComplete = user.trainingComplete || false;
+
+    // Background check only required for volunteers and dual users
+    const needsBackgroundCheck = user.role === UserRole.VOLUNTEER || user.role === UserRole.CLIENT_VOLUNTEER;
+
+    const requirements = [
+        { id: 'email', label: 'Email Verification', completed: emailVerified },
+        { id: 'platform', label: 'Platform Tutorial', completed: platformVideoWatched },
+        { id: 'safety', label: 'Safety Training', completed: safetyVideoWatched },
+        ...(needsBackgroundCheck ? [{ id: 'background', label: 'Background Check', completed: backgroundCheckSubmitted }] : [])
+    ];
+
+    const completedCount = requirements.filter(r => r.completed).length;
+    const totalCount = requirements.length;
+    const progressPercentage = Math.round((completedCount / totalCount) * 100);
+
+    const handleMarkTrainingComplete = async () => {
+        if (completedCount === totalCount) {
+            // Import training progress service
+            const { saveTrainingProgress } = await import('../services/trainingProgressService');
+            const { supabase } = await import('../services/supabase');
+
+            // Get the authenticated user's UUID
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) return;
+
+            // Save training progress to Supabase
+            await saveTrainingProgress(session.user.id, {
+                platform_video_watched: platformVideoWatched,
+                safety_video_watched: safetyVideoWatched,
+                training_complete: true
+            });
+
+            // Update user's trainingComplete flag
+            onUpdateUser({ trainingComplete: true });
+        }
+    };
+
+    // Render functions for dual-role training sections
+    const renderPlatformTutorial = (role: 'volunteer' | 'client' | 'single', watched: boolean, handler: () => void) => {
+        const sectionKey = role === 'volunteer' ? 'volunteerPlatform' : role === 'client' ? 'clientPlatform' : 'platform';
+        const roleLabel = role === 'volunteer' ? ' (Volunteer)' : role === 'client' ? ' (Client)' : '';
+
+        return (
+            <Card>
+                <div className="flex items-start gap-4">
+                    <div className="p-3 rounded-full bg-brand-100 dark:bg-brand-900">
+                        <PlayCircle className="text-brand-600 dark:text-brand-400" size={24} />
+                    </div>
+                    <div className="flex-1">
+                        <div className="flex items-center justify-between mb-2">
+                            <h3 className="text-lg font-bold text-slate-900 dark:text-white">
+                                Platform Tutorial{roleLabel}
+                            </h3>
+                            <button
+                                onClick={() => toggleSection(sectionKey)}
+                                className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+                                aria-label="Toggle section"
+                            >
+                                {expandedSections[sectionKey] ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                            </button>
+                        </div>
+                        {expandedSections[sectionKey] && (
+                            <>
+                                {!watched ? (
+                                    <div className="space-y-4">
+                                        <p className="text-sm text-slate-600 dark:text-slate-400">
+                                            Watch this 3-minute video to learn how to use the NPVN platform.
+                                        </p>
+                                        <div className="aspect-video bg-slate-100 dark:bg-slate-800 rounded-lg overflow-hidden flex items-center justify-center">
+                                            <iframe
+                                                className="w-full h-full"
+                                                src="https://www.youtube.com/embed/dQw4w9WgXcQ"
+                                                title="Platform Tutorial"
+                                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                                allowFullScreen
+                                            />
+                                        </div>
+                                        <Button onClick={handler}>
+                                            Mark as Watched
+                                        </Button>
+                                    </div>
+                                ) : (
+                                    <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
+                                        <CheckCircle size={18} />
+                                        <span className="font-medium">Video completed ✓</span>
+                                    </div>
+                                )}
+                            </>
+                        )}
+                    </div>
+                </div>
+            </Card>
+        );
+    };
+
+    const renderSafetyTraining = (role: 'volunteer' | 'client' | 'single', watched: boolean, handler: () => void) => {
+        const sectionKey = role === 'volunteer' ? 'volunteerSafety' : role === 'client' ? 'clientSafety' : 'safety';
+        const roleLabel = role === 'volunteer' ? ' (Volunteer)' : role === 'client' ? ' (Client)' : '';
+
+        return (
+            <Card>
+                <div className="flex items-start gap-4">
+                    <div className="p-3 rounded-full bg-red-100 dark:bg-red-900">
+                        <ShieldCheck className="text-red-600 dark:text-red-400" size={24} />
+                    </div>
+                    <div className="flex-1">
+                        <div className="flex items-center justify-between mb-2">
+                            <h3 className="text-lg font-bold text-slate-900 dark:text-white">
+                                Safety Training{roleLabel}
+                            </h3>
+                            <button
+                                onClick={() => toggleSection(sectionKey)}
+                                className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+                                aria-label="Toggle section"
+                            >
+                                {expandedSections[sectionKey] ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                            </button>
+                        </div>
+                        {expandedSections[sectionKey] && (
+                            <>
+                                {!watched ? (
+                                    <div className="space-y-4">
+                                        <p className="text-sm text-slate-600 dark:text-slate-400">
+                                            Learn about safety protocols and best practices.
+                                        </p>
+                                        <div className="aspect-video bg-slate-100 dark:bg-slate-800 rounded-lg overflow-hidden flex items-center justify-center">
+                                            <iframe
+                                                className="w-full h-full"
+                                                src="https://www.youtube.com/embed/dQw4w9WgXcQ"
+                                                title="Safety Training"
+                                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                                allowFullScreen
+                                            />
+                                        </div>
+                                        <Button onClick={handler}>
+                                            Mark as Watched
+                                        </Button>
+                                    </div>
+                                ) : (
+                                    <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
+                                        <CheckCircle size={18} />
+                                        <span className="font-medium">Video completed ✓</span>
+                                    </div>
+                                )}
+                            </>
+                        )}
+                    </div>
+                </div>
+            </Card>
+        );
+    };
+
+    return (
+        <div className="max-w-4xl mx-auto py-8 space-y-6">
+            <div className="text-center mb-8">
+                <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">
+                    {user.role === UserRole.CLIENT ? 'Client Training Center' :
+                        user.role === UserRole.VOLUNTEER ? 'Volunteer Training Center' :
+                            'Dual User Training Center'}
+                </h1>
+                <p className="text-slate-600 dark:text-slate-400">
+                    {user.role === UserRole.CLIENT
+                        ? 'Complete all requirements to start requesting services'
+                        : 'Complete all requirements to start volunteering'}
+                </p>
+            </div>
+
+            {/* Progress Overview */}
+            <Card className="bg-gradient-to-r from-brand-50 to-blue-50 dark:from-slate-800 dark:to-slate-700 border-brand-200">
+                <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                        <h2 className="text-xl font-bold text-slate-900 dark:text-white">Your Progress</h2>
+                        <span className="text-2xl font-bold text-brand-600 dark:text-brand-400">
+                            {completedCount}/{totalCount}
+                        </span>
+                    </div>
+
+                    <div className="w-full bg-slate-200 dark:bg-slate-600 rounded-full h-4">
+                        <div
+                            className="bg-gradient-to-r from-brand-500 to-brand-600 h-4 rounded-full transition-all duration-500"
+                            style={{ width: `${progressPercentage}%` }}
+                        />
+                    </div>
+
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-2">
+                        {requirements.map(req => (
+                            <div key={req.id} className="flex items-center gap-2 text-sm">
+                                {req.completed ? (
+                                    <CheckCircle className="text-green-600 dark:text-green-400" size={18} />
+                                ) : (
+                                    <Circle className="text-slate-400" size={18} />
+                                )}
+                                <span className={req.completed ? 'text-slate-900 dark:text-white font-medium' : 'text-slate-600 dark:text-slate-400'}>
+                                    {req.label}
+                                </span>
+                            </div>
+                        ))}
+                    </div>
+
+                    {completedCount === totalCount && !trainingComplete && (
+                        <div className="pt-4 border-t border-brand-200 dark:border-slate-600">
+                            <Button onClick={handleMarkTrainingComplete} className="w-full">
+                                ✅ Mark Training Complete & Start Volunteering
+                            </Button>
+                        </div>
+                    )}
+
+                    {trainingComplete && (
+                        <div className="pt-4 border-t border-brand-200 dark:border-slate-600 text-center">
+                            <div className="flex items-center justify-center gap-2 text-green-600 dark:text-green-400 font-bold">
+                                <CheckCircle size={24} />
+                                <span>Training Complete! You can now accept requests.</span>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </Card>
+
+            {/* Email Verification */}
+            <Card>
+                <div className="flex items-start gap-4">
+                    <div className={`p-3 rounded-full ${emailVerified ? 'bg-green-100 dark:bg-green-900' : 'bg-amber-100 dark:bg-amber-900'}`}>
+                        <Mail className={emailVerified ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'} size={24} />
+                    </div>
+                    <div className="flex-1">
+                        <div className="flex items-center justify-between mb-2">
+                            <h3 className="text-lg font-bold text-slate-900 dark:text-white">Email Verification</h3>
+                            <button
+                                onClick={() => toggleSection('email')}
+                                className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+                                aria-label="Toggle section"
+                            >
+                                {expandedSections.email ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                            </button>
+                        </div>
+                        {expandedSections.email && (
+                            <>
+                                {emailVerified ? (
+                                    <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
+                                        <CheckCircle size={18} />
+                                        <span className="font-medium">Email verified ✓</span>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-3">
+                                        <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+                                            <AlertCircle size={18} />
+                                            <span className="font-medium">Verification email sent to {user.email}</span>
+                                        </div>
+                                        <p className="text-sm text-slate-600 dark:text-slate-400">
+                                            Please check your inbox and click the verification link to continue.
+                                        </p>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={async () => {
+                                                const { supabase } = await import('../services/supabase');
+                                                const { error } = await supabase.auth.resend({
+                                                    type: 'signup',
+                                                    email: user.email!
+                                                });
+                                                if (error) {
+                                                    alert('Failed to resend email. Please try again.');
+                                                } else {
+                                                    alert('Verification email sent! Please check your inbox.');
+                                                }
+                                            }}
+                                        >
+                                            <Mail size={16} className="mr-2" />
+                                            Resend Verification Email
+                                        </Button>
+                                    </div>
+                                )}
+                            </>
+                        )}
+                    </div>
+                </div>
+            </Card>
+
+            {/* Dual Role Training - Separate sections for volunteer and client */}
+            {isDualRole ? (
+                <>
+                    {/* Volunteer Training Section */}
+                    <div className="space-y-4">
+                        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-slate-800 dark:to-slate-700 p-4 rounded-lg border-2 border-blue-200 dark:border-blue-800">
+                            <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-1">Volunteer Training</h2>
+                            <p className="text-sm text-slate-600 dark:text-slate-300">Complete all requirements to start volunteering</p>
+                        </div>
+
+                        {renderPlatformTutorial('volunteer', volunteerPlatformWatched, handleVolunteerPlatformWatched)}
+                        {renderSafetyTraining('volunteer', volunteerSafetyWatched, handleVolunteerSafetyWatched)}
+                    </div>
+
+                    {/* Client Training Section */}
+                    <div className="space-y-4">
+                        <div className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-slate-800 dark:to-slate-700 p-4 rounded-lg border-2 border-green-200 dark:border-green-800">
+                            <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-1">Client Training</h2>
+                            <p className="text-sm text-slate-600 dark:text-slate-300">Complete all requirements to start requesting services</p>
+                        </div>
+
+                        {renderPlatformTutorial('client', clientPlatformWatched, handleClientPlatformWatched)}
+                        {renderSafetyTraining('client', clientSafetyWatched, handleClientSafetyWatched)}
+                    </div>
+                </>
+            ) : (
+                <>
+                    {/* Single Role Training - Platform Tutorial */}
+                    <Card>
+                        <div className="flex items-start gap-4">
+                            <div className={`p-3 rounded-full ${platformVideoWatched ? 'bg-green-100 dark:bg-green-900' : 'bg-blue-100 dark:bg-blue-900'}`}>
+                                <PlayCircle className={platformVideoWatched ? 'text-green-600 dark:text-green-400' : 'text-blue-600 dark:text-blue-400'} size={24} />
+                            </div>
+                            <div className="flex-1">
+                                <div className="flex items-center justify-between mb-2">
+                                    <h3 className="text-lg font-bold text-slate-900 dark:text-white">Platform Tutorial</h3>
+                                    <button
+                                        onClick={() => toggleSection('platform')}
+                                        className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+                                        aria-label="Toggle section"
+                                    >
+                                        {expandedSections.platform ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                                    </button>
+                                </div>
+                                {expandedSections.platform && (
+                                    <>
+                                        <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
+                                            Learn how to use the NPVN platform, accept requests, and communicate with clients.
+                                        </p>
+
+                                        {/* Video Placeholder */}
+                                        <div className="bg-slate-900 rounded-lg aspect-video flex items-center justify-center mb-4">
+                                            <div className="text-center text-white">
+                                                <PlayCircle size={64} className="mx-auto mb-2 opacity-50" />
+                                                <p className="text-sm opacity-75">Platform Tutorial Video</p>
+                                                <p className="text-xs opacity-50">(Video placeholder - add your video URL)</p>
+                                            </div>
+                                        </div>
+
+                                        {!platformVideoWatched && (
+                                            <Button onClick={handlePlatformVideoWatched} variant="secondary">
+                                                Mark as Watched
+                                            </Button>
+                                        )}
+                                        {platformVideoWatched && (
+                                            <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
+                                                <CheckCircle size={18} />
+                                                <span className="font-medium">Completed ✓</span>
+                                            </div>
+                                        )}
+                                    </>
+                                )}
+                            </div>
+                        </div>
+                    </Card>
+
+                    {/* Safety Training */}
+                    <Card>
+                        <div className="flex items-start gap-4">
+                            <div className={`p-3 rounded-full ${safetyVideoWatched ? 'bg-green-100 dark:bg-green-900' : 'bg-red-100 dark:bg-red-900'}`}>
+                                <ShieldCheck className={safetyVideoWatched ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'} size={24} />
+                            </div>
+                            <div className="flex-1">
+                                <div className="flex items-center justify-between mb-2">
+                                    <h3 className="text-lg font-bold text-slate-900 dark:text-white">Safety Training</h3>
+                                    <button
+                                        onClick={() => toggleSection('safety')}
+                                        className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+                                        aria-label="Toggle section"
+                                    >
+                                        {expandedSections.safety ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                                    </button>
+                                </div>
+                                {expandedSections.safety && (
+                                    <>
+                                        <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
+                                            Required safety protocols, emergency procedures, and best practices for volunteer work.
+                                        </p>
+
+                                        {/* Video Placeholder */}
+                                        <div className="bg-slate-900 rounded-lg aspect-video flex items-center justify-center mb-4">
+                                            <div className="text-center text-white">
+                                                <ShieldCheck size={64} className="mx-auto mb-2 opacity-50" />
+                                                <p className="text-sm opacity-75">Safety Training Video</p>
+                                                <p className="text-xs opacity-50">(Video placeholder - add your video URL)</p>
+                                            </div>
+                                        </div>
+
+                                        {!safetyVideoWatched && (
+                                            <Button onClick={handleSafetyVideoWatched} variant="secondary">
+                                                Mark as Watched
+                                            </Button>
+                                        )}
+                                        {safetyVideoWatched && (
+                                            <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
+                                                <CheckCircle size={18} />
+                                                <span className="font-medium">Completed ✓</span>
+                                            </div>
+                                        )}
+                                    </>
+                                )}
+                            </div>
+                        </div>
+                    </Card>
+
+                    {/* Services NPVN Will Not Provide */}
+                    <Card className="border-2 border-red-200 dark:border-red-800">
+                        <div className="flex items-start gap-4">
+                            <div className="p-3 rounded-full bg-red-100 dark:bg-red-900">
+                                <AlertCircle className="text-red-600 dark:text-red-400" size={24} />
+                            </div>
+                            <div className="flex-1">
+                                <div className="flex items-center justify-between mb-3">
+                                    <h3 className="text-lg font-bold text-slate-900 dark:text-white">Services NPVN Will Not Provide</h3>
+                                    <button
+                                        onClick={() => toggleSection('services')}
+                                        className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+                                        aria-label="Toggle section"
+                                    >
+                                        {expandedSections.services ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                                    </button>
+                                </div>
+                                {expandedSections.services && (
+                                    <>
+                                        <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
+                                            NPVN focuses on neighbor-to-neighbor support that is practical, low-risk, and non-clinical. Clear boundaries help ensure a safe and positive experience for everyone involved.
+                                        </p>
+
+                                        <div className="space-y-4 text-sm">
+                                            {/* Childcare */}
+                                            <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-lg border border-red-100 dark:border-red-800">
+                                                <h4 className="font-bold text-red-900 dark:text-red-100 mb-2">🚫 Childcare or Babysitting</h4>
+                                                <p className="text-slate-700 dark:text-slate-300">
+                                                    NPVN does not provide childcare, babysitting, or supervision of minors. This includes short-term or informal care.
+                                                </p>
+                                            </div>
+
+                                            {/* Medical Care */}
+                                            <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-lg border border-red-100 dark:border-red-800">
+                                                <h4 className="font-bold text-red-900 dark:text-red-100 mb-2">🚫 Medical or Personal Care</h4>
+                                                <p className="text-slate-700 dark:text-slate-300">
+                                                    Volunteers do not provide medical care, nursing services, medication administration, wound care, injections, or hands-on personal care such as bathing or toileting.
+                                                </p>
+                                            </div>
+
+                                            {/* Clinical Advice */}
+                                            <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-lg border border-red-100 dark:border-red-800">
+                                                <h4 className="font-bold text-red-900 dark:text-red-100 mb-2">🚫 Clinical Advice or Diagnosis</h4>
+                                                <p className="text-slate-700 dark:text-slate-300">
+                                                    Volunteers do not offer medical, mental health, or legal advice, diagnosis, or counseling.
+                                                </p>
+                                            </div>
+
+                                            {/* Financial/Legal */}
+                                            <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-lg border border-red-100 dark:border-red-800">
+                                                <h4 className="font-bold text-red-900 dark:text-red-100 mb-2">🚫 Financial or Legal Assistance</h4>
+                                                <p className="text-slate-700 dark:text-slate-300">
+                                                    NPVN does not manage money, provide loans, handle banking, write checks, give legal advice, or assist with legal matters.
+                                                </p>
+                                            </div>
+
+                                            {/* Skilled Trades */}
+                                            <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-lg border border-red-100 dark:border-red-800">
+                                                <h4 className="font-bold text-red-900 dark:text-red-100 mb-2">🚫 Skilled or Licensed Trades</h4>
+                                                <p className="text-slate-700 dark:text-slate-300">
+                                                    Volunteers do not perform skilled or licensed work such as electrical, plumbing, roofing, construction, or major home repairs.
+                                                </p>
+                                            </div>
+
+                                            {/* Heavy Labor */}
+                                            <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-lg border border-red-100 dark:border-red-800">
+                                                <h4 className="font-bold text-red-900 dark:text-red-100 mb-2">🚫 Heavy Labor or Hazardous Tasks</h4>
+                                                <p className="text-slate-700 dark:text-slate-300">
+                                                    This includes lifting heavy furniture, climbing ladders, working on roofs, snow removal from roofs, tree cutting, or tasks involving power tools.
+                                                </p>
+                                            </div>
+
+                                            {/* Overnight Support */}
+                                            <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-lg border border-red-100 dark:border-red-800">
+                                                <h4 className="font-bold text-red-900 dark:text-red-100 mb-2">🚫 In-Home Overnight Support</h4>
+                                                <p className="text-slate-700 dark:text-slate-300">
+                                                    Volunteers do not stay overnight in a participant's home or provide overnight supervision.
+                                                </p>
+                                            </div>
+
+                                            {/* Transportation of Minors */}
+                                            <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-lg border border-red-100 dark:border-red-800">
+                                                <h4 className="font-bold text-red-900 dark:text-red-100 mb-2">🚫 Transportation of Minors</h4>
+                                                <p className="text-slate-700 dark:text-slate-300">
+                                                    Volunteers do not transport children or minors under any circumstances.
+                                                </p>
+                                            </div>
+
+                                            {/* Animal Care */}
+                                            <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-lg border border-red-100 dark:border-red-800">
+                                                <h4 className="font-bold text-red-900 dark:text-red-100 mb-2">🚫 Animal Care Services</h4>
+                                                <p className="text-slate-700 dark:text-slate-300">
+                                                    Volunteers do not provide pet sitting, walking, grooming, or veterinary assistance.
+                                                </p>
+                                            </div>
+
+                                            {/* Substance-Related */}
+                                            <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-lg border border-red-100 dark:border-red-800">
+                                                <h4 className="font-bold text-red-900 dark:text-red-100 mb-2">🚫 Substance-Related Tasks</h4>
+                                                <p className="text-slate-700 dark:text-slate-300">
+                                                    Volunteers do not purchase, handle, or transport alcohol, cannabis, tobacco, or controlled substances.
+                                                </p>
+                                            </div>
+
+                                            {/* Emergency Response */}
+                                            <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-lg border border-red-100 dark:border-red-800">
+                                                <h4 className="font-bold text-red-900 dark:text-red-100 mb-2">🚫 Emergency or Crisis Response</h4>
+                                                <p className="text-slate-700 dark:text-slate-300">
+                                                    NPVN volunteers are not emergency responders and do not provide crisis intervention. <span className="font-bold">Emergencies should always be directed to 911 or appropriate emergency services.</span>
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        <div className="mt-6 p-4 bg-slate-100 dark:bg-slate-800 rounded-lg border border-slate-300 dark:border-slate-600">
+                                            <p className="text-sm text-slate-700 dark:text-slate-300 font-medium text-center">
+                                                💙 NPVN focuses on neighbor-to-neighbor support that is practical, low-risk, and non-clinical. <br />
+                                                Clear boundaries help ensure a safe and positive experience for everyone involved.
+                                            </p>
+                                        </div>
+                                    </div>
+                            </>
+                        )}
+                        </div>
+                    </div>
+                </Card>
+{/* Background Check - Only for Volunteers and Dual Users */ }
+{
+    needsBackgroundCheck && (
+        <Card>
+            <div className="flex items-start gap-4">
+                <div className={`p-3 rounded-full ${user.backgroundCheckStatus === 'APPROVED' ? 'bg-green-100 dark:bg-green-900' :
+                    user.backgroundCheckStatus === 'PENDING' ? 'bg-amber-100 dark:bg-amber-900' :
+                        user.backgroundCheckStatus === 'REJECTED' ? 'bg-red-100 dark:bg-red-900' :
+                            'bg-slate-100 dark:bg-slate-800'
+                    }`}>
+                    <ShieldCheck className={
+                        user.backgroundCheckStatus === 'APPROVED' ? 'text-green-600 dark:text-green-400' :
+                            user.backgroundCheckStatus === 'PENDING' ? 'text-amber-600 dark:text-amber-400' :
+                                user.backgroundCheckStatus === 'REJECTED' ? 'text-red-600 dark:text-red-400' :
+                                    'text-slate-600 dark:text-slate-400'
+                    } size={24} />
+                </div>
+                <div className="flex-1">
+                    <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-3">
+                            <h3 className="text-lg font-bold text-slate-900 dark:text-white">Background Check</h3>
+                            {user.backgroundCheckStatus === 'APPROVED' && (
+                                <span className="px-3 py-1 bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 text-xs font-bold rounded-full">
+                                    ✓ Complete
+                                </span>
+                            )}
+                            {(user.backgroundCheckStatus === 'NOT_STARTED' || user.backgroundCheckStatus === 'REJECTED') && (
+                                <span className="px-3 py-1 bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300 text-xs font-bold rounded-full">
+                                    ✗ Incomplete
+                                </span>
+                            )}
+                            {user.backgroundCheckStatus === 'PENDING' && (
+                                <span className="px-3 py-1 bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300 text-xs font-bold rounded-full">
+                                    ⏳ In Progress
+                                </span>
+                            )}
+                        </div>
+                        <button
+                            onClick={() => toggleSection('background')}
+                            className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+                            aria-label="Toggle section"
+                        >
+                            {expandedSections.background ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                        </button>
+                    </div>
+                    {expandedSections.background && (
+                        <>
+
+                            {user.backgroundCheckStatus === 'NOT_STARTED' && (
+                                <div className="space-y-4">
+                                    <p className="text-sm text-slate-600 dark:text-slate-400">
+                                        A background check is required before you can start volunteering. This helps ensure the safety of our community members.
+                                    </p>
+                                    <Button onClick={() => setShowBgModal(true)}>
+                                        Fill Out Background Check
+                                    </Button>
+                                </div>
+                            )}
+
+                            {user.backgroundCheckStatus === 'PENDING' && (
+                                <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+                                    <AlertCircle size={18} />
+                                    <span className="font-medium">Background check in progress...</span>
+                                </div>
+                            )}
+
+                            {user.backgroundCheckStatus === 'APPROVED' && (
+                                <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
+                                    <CheckCircle size={18} />
+                                    <span className="font-medium">Background check approved ✓</span>
+                                </div>
+                            )}
+
+                            {user.backgroundCheckStatus === 'REJECTED' && (
+                                <div className="space-y-2">
+                                    <div className="flex items-center gap-2 text-red-600 dark:text-red-400">
+                                        <AlertCircle size={18} />
+                                        <span className="font-medium">Background check not approved</span>
+                                    </div>
+                                    <p className="text-sm text-slate-600 dark:text-slate-400">
+                                        Please contact the coordinator for more information.
+                                    </p>
+                                </div>
+                            )}
+                        </>
+                    )}
+                </div>
+            </div>
+        </Card>
+    )
+}
+
+{/* Background Check Modal */ }
+{
+    showBgModal && (
+        <BackgroundCheckModal
+            onClose={() => setShowBgModal(false)}
+            onSubmit={() => {
+                onUpdateUser({ backgroundCheckStatus: 'PENDING' });
+                setShowBgModal(false);
+            }}
+        />
+    )
+};

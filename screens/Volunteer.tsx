@@ -197,7 +197,7 @@ const ContactStaffModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
 };
 
 // --- Background Check Modal ---
-const BackgroundCheckModal: React.FC<{ onClose: () => void; onSubmit: () => void }> = ({ onClose, onSubmit }) => {
+export const BackgroundCheckModal: React.FC<{ onClose: () => void; onSubmit: () => void }> = ({ onClose, onSubmit }) => {
    const { t } = useTheme();
    // Form State
    const [formData, setFormData] = useState({

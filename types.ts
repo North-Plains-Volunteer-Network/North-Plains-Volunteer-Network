@@ -104,6 +104,7 @@ export interface User {
   badges?: string[];
   newBadges?: string[]; // Badges earned but not yet acknowledged by user (triggers popup)
   backgroundCheckStatus?: 'PENDING' | 'APPROVED' | 'REJECTED' | 'NOT_STARTED';
+  backgroundCheckQuestionsComplete?: boolean; // Track if intake form background questions are completed
   trainingComplete?: boolean;
   languages?: string[];
   isDriver?: boolean;
