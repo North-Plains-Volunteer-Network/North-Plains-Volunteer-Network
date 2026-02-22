@@ -12,7 +12,7 @@ export const OpportunitiesPage: React.FC<{
     onNavigate: (p: string) => void;
 }> = ({ user, requests, onAccept, onNavigate }) => {
     const { t } = useTheme();
-    const [filter, setFilter] = useState<'ALL' | RequestCategory>('ALL');
+    const [filter, setFilter] = useState<'ALL' | 'GROUP_EVENTS' | RequestCategory>('ALL');
 
     // Show only PENDING requests that aren't the user's own
     const availableRequests = requests.filter(r =>
@@ -21,7 +21,9 @@ export const OpportunitiesPage: React.FC<{
 
     const filteredRequests = filter === 'ALL'
         ? availableRequests
-        : availableRequests.filter(r => r.category === filter);
+        : filter === 'GROUP_EVENTS'
+            ? availableRequests.filter(r => r.isGroupEvent)
+            : availableRequests.filter(r => r.category === filter);
 
     return (
         <div className="space-y-6">
@@ -35,12 +37,12 @@ export const OpportunitiesPage: React.FC<{
                     className="px-4 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
                 >
                     <option value="ALL">All Categories</option>
+                    <option value="GROUP_EVENTS">🎉 Group Events</option>
                     <option value={RequestCategory.RIDE}>Rides</option>
                     <option value={RequestCategory.SHOPPING}>Shopping</option>
                     <option value={RequestCategory.HOME_HELP}>Home Help</option>
                     <option value={RequestCategory.SOCIAL}>Social/Emotional Support</option>
                     <option value={RequestCategory.TECHNOLOGY}>Technology</option>
-                    <option value={RequestCategory.OTHER}>Other</option>
                 </select>
             </div>
 

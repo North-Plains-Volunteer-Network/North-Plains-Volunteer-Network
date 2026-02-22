@@ -1146,7 +1146,14 @@ export const OpportunityBoard: React.FC<{ requests: Request[]; onAccept: (id: st
    );
 
    const filtered = available.filter(r => {
-      const matchesCat = selectedCategories.length === 0 || selectedCategories.includes(r.category);
+      // Handle Group Events filter
+      if (selectedCategories.includes('GROUP_EVENTS')) {
+         if (!r.isGroupEvent) return false;
+      }
+
+      // Handle regular category filters (exclude GROUP_EVENTS from this check)
+      const regularCategoryFilters = selectedCategories.filter(cat => cat !== 'GROUP_EVENTS');
+      const matchesCat = regularCategoryFilters.length === 0 || regularCategoryFilters.includes(r.category);
       const matchesDate = !dateFilter || r.date === dateFilter;
 
       // Hide transportation requests from non-drivers (only if user is defined)
@@ -1157,12 +1164,24 @@ export const OpportunityBoard: React.FC<{ requests: Request[]; onAccept: (id: st
 
    const availableDates = Array.from(new Set(available.map(r => r.date)));
 
-   const categories = Object.values(RequestCategory);
+   // Filter out OTHER category and get remaining categories
+   const categories = Object.values(RequestCategory).filter(cat => cat !== RequestCategory.OTHER);
+
    const toggleCategory = (cat: string) => {
       if (selectedCategories.includes(cat)) {
          setSelectedCategories(prev => prev.filter(c => c !== cat));
       } else {
          setSelectedCategories(prev => [...prev, cat]);
+      }
+   };
+
+   // Check if group events filter is active
+   const groupEventsActive = selectedCategories.includes('GROUP_EVENTS');
+   const toggleGroupEvents = () => {
+      if (groupEventsActive) {
+         setSelectedCategories(prev => prev.filter(c => c !== 'GROUP_EVENTS'));
+      } else {
+         setSelectedCategories(prev => [...prev, 'GROUP_EVENTS']);
       }
    };
 
@@ -1178,13 +1197,21 @@ export const OpportunityBoard: React.FC<{ requests: Request[]; onAccept: (id: st
                   >
                      {t('common.all')}
                   </button>
+                  <button
+                     onClick={toggleGroupEvents}
+                     className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors border whitespace-nowrap flex items-center gap-1
+                                ${groupEventsActive ? 'bg-brand-600 text-white border-brand-600' : 'bg-white dark:bg-black text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50'}
+                            `}
+                  >
+                     🎉 Group Events
+                  </button>
                   {categories.map(cat => (
                      <button
                         key={cat}
                         onClick={() => toggleCategory(cat)}
                         className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors border whitespace-nowrap flex items-center gap-1
-                  ${selectedCategories.includes(cat) ? 'bg-brand-600 text-white border-brand-600' : 'bg-white dark:bg-black text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50'}
-                `}
+                                    ${selectedCategories.includes(cat) ? 'bg-brand-600 text-white border-brand-600' : 'bg-white dark:bg-black text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50'}
+                                `}
                      >
                         {getCategoryIcon(cat as RequestCategory)} {t(`category.${cat}`) || cat}
                      </button>

@@ -79,6 +79,10 @@ export const UnifiedOnboarding: React.FC<UnifiedOnboardingProps> = ({ user, onUp
                     setError('Please fill in all required fields');
                     return false;
                 }
+                if (!formData.phone && !formData.email) {
+                    setError('Please provide either a phone number or email address');
+                    return false;
+                }
                 break;
             case 2: // Demographics
                 if (!formData.ethnicity || !formData.race || !formData.preferredLanguage || !formData.maritalStatus) {
@@ -107,10 +111,6 @@ export const UnifiedOnboarding: React.FC<UnifiedOnboardingProps> = ({ user, onUp
                 }
                 break;
             case 5: // Contact & Personal
-                if (!formData.phone && !formData.email) {
-                    setError('Please provide either a phone number or email address');
-                    return false;
-                }
                 if (!formData.preferredContactMethod) {
                     setError('Please select your preferred contact method');
                     return false;
@@ -228,6 +228,79 @@ export const UnifiedOnboarding: React.FC<UnifiedOnboardingProps> = ({ user, onUp
                             value={formData.preferredName || ''}
                             onChange={e => setFormData({ ...formData, preferredName: e.target.value })}
                         />
+
+                        {/* Contact Information */}
+                        <div className="border-t pt-4 space-y-4">
+                            <h3 className="font-bold text-slate-900 dark:text-white">Contact Information</h3>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <Input
+                                    label={t('common.email')}
+                                    type="email"
+                                    value={formData.email || ''}
+                                    onChange={e => setFormData({ ...formData, email: e.target.value })}
+                                />
+                                <Input
+                                    label={t('common.phone')}
+                                    type="tel"
+                                    placeholder="(555) 123-4567"
+                                    value={formData.phone || ''}
+                                    onChange={e => setFormData({ ...formData, phone: e.target.value })}
+                                />
+                            </div>
+
+                            {/* Notification Preferences */}
+                            {(formData.email || formData.phone) && (
+                                <div className="bg-blue-50 dark:bg-slate-800 p-4 rounded-lg border border-blue-200 dark:border-slate-600">
+                                    <p className="text-sm font-bold text-blue-900 dark:text-blue-300 mb-3">
+                                        📬 Notification Preferences
+                                    </p>
+                                    <p className="text-xs text-slate-600 dark:text-slate-400 mb-3">
+                                        Get notified about new opportunities and important alerts:
+                                    </p>
+                                    <div className="space-y-2">
+                                        {formData.email && (
+                                            <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300 cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    className="w-4 h-4 rounded text-brand-600"
+                                                    checked={formData.notificationPreferences?.email || false}
+                                                    onChange={e => setFormData({
+                                                        ...formData,
+                                                        notificationPreferences: {
+                                                            ...(formData.notificationPreferences || { sms: false, calendar: false }),
+                                                            email: e.target.checked
+                                                        }
+                                                    })}
+                                                />
+                                                <span className="font-medium">
+                                                    📧 Email notifications
+                                                </span>
+                                            </label>
+                                        )}
+                                        {formData.phone && (
+                                            <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300 cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    className="w-4 h-4 rounded text-brand-600"
+                                                    checked={formData.notificationPreferences?.sms || false}
+                                                    onChange={e => setFormData({
+                                                        ...formData,
+                                                        notificationPreferences: {
+                                                            ...(formData.notificationPreferences || { email: false, calendar: false }),
+                                                            sms: e.target.checked
+                                                        }
+                                                    })}
+                                                />
+                                                <span className="font-medium">
+                                                    📱 Text/SMS notifications
+                                                </span>
+                                            </label>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
 
                         <Input
                             label={t('onboarding.address')}
@@ -567,19 +640,6 @@ export const UnifiedOnboarding: React.FC<UnifiedOnboardingProps> = ({ user, onUp
                 {step === 5 && (
                     <div className="space-y-4">
                         <h2 className="text-xl font-bold mb-4">{t('onboarding.step_5_title')}</h2>
-
-                        <div className="grid grid-cols-2 gap-4">
-                            <Input
-                                label={t('common.phone')}
-                                value={formData.phone || ''}
-                                onChange={e => setFormData({ ...formData, phone: e.target.value })}
-                            />
-                            <Input
-                                label={t('common.email')}
-                                value={formData.email || ''}
-                                onChange={e => setFormData({ ...formData, email: e.target.value })}
-                            />
-                        </div>
 
                         <Input
                             label={t('onboarding.preferred_contact')}

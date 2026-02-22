@@ -2,7 +2,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '../services/supabase';
 import { getUserProfile } from '../services/userService';
-import { User, UserRole } from '../types';
+import { User, UserRole, OnboardingStep } from '../types';
 import { Session } from '@supabase/supabase-js';
 
 interface AuthContextType {
@@ -107,13 +107,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const debugLogin = (role: UserRole) => {
         const mockUser: User = {
-            id: `demo_${Date.now()}`,
-            email: `demo_${role.toLowerCase()}@example.com`,
+            id: `demo_${role.toLowerCase()}_${Date.now()}`,
+            email: `demo_${role.toLowerCase()}@npvn.org`,
             role: role,
-            name: `Demo ${role}`,
-            onboardingStep: 1, // Default to step 1 to show onboarding logic if checked, or 6 to skip?
-            // Let's set it to valid state effectively
+            name: `Demo ${role === UserRole.CLIENT ? 'Client' : role === UserRole.VOLUNTEER ? 'Volunteer' : role === UserRole.CLIENT_VOLUNTEER ? 'Dual User' : 'Admin'}`,
+            onboardingStep: OnboardingStep.COMPLETE, // Set to COMPLETE (5) to bypass intake form
+            emailVerified: true,
+            // Complete profile fields
+            phone: '(503) 555-1234',
+            preferredName: `Demo ${role === UserRole.CLIENT ? 'Client' : role === UserRole.VOLUNTEER ? 'Volunteer' : role === UserRole.CLIENT_VOLUNTEER ? 'Dual User' : 'Admin'}`,
+            dob: '1990-01-01',
+            gender: 'Prefer not to say',
+            preferredContactMethod: 'Email',
+            // Training and background check complete for volunteers and dual users
+            trainingComplete: role === UserRole.VOLUNTEER || role === UserRole.CLIENT_VOLUNTEER || role === UserRole.ADMIN,
+            backgroundCheckStatus: (role === UserRole.VOLUNTEER || role === UserRole.CLIENT_VOLUNTEER) ? 'APPROVED' : undefined,
+            backgroundCheckQuestionsComplete: (role === UserRole.VOLUNTEER || role === UserRole.CLIENT_VOLUNTEER) ? true : undefined,
+            // Notification preferences
+            notificationPreferences: {
+                email: true,
+                sms: false,
+                calendar: false
+            },
+            // Emergency contact
+            emergencyContact: {
+                name: 'Jane Doe',
+                phone: '(503) 555-5678',
+                relation: 'Spouse'
+            }
         };
+        console.log('🎭 Demo login activated for:', role);
         setUser(mockUser);
     };
 

@@ -354,14 +354,20 @@ export const TrainingCenter: React.FC<TrainingCenterProps> = ({ user, onUpdateUs
                 </div>
             </Card>
 
-            {/* Email Verification */}
+            {/* Email Verification Section */}
             <Card>
                 <div className="flex items-start gap-4">
-                    <div className={`p-3 rounded-full ${emailVerified ? 'bg-green-100 dark:bg-green-900' : 'bg-amber-100 dark:bg-amber-900'}`}>
-                        <Mail className={emailVerified ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'} size={24} />
+                    <div className="p-3 rounded-full bg-blue-100 dark:bg-blue-900">
+                        <Mail className="text-blue-600 dark:text-blue-400" size={24} />
                     </div>
                     <div className="flex-1">
-                        <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">Email Verification</h3>
+                        <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">
+                            Email Verification
+                        </h3>
+                        <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
+                            Verify your email address to receive notifications and updates.
+                        </p>
+
                         {emailVerified ? (
                             <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
                                 <CheckCircle size={18} />
@@ -369,30 +375,27 @@ export const TrainingCenter: React.FC<TrainingCenterProps> = ({ user, onUpdateUs
                             </div>
                         ) : (
                             <div className="space-y-3">
-                                <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
-                                    <AlertCircle size={18} />
-                                    <span className="font-medium">Verification email sent to {user.email}</span>
+                                <div className="flex items-start gap-2 text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 p-3 rounded-lg">
+                                    <AlertCircle size={18} className="mt-0.5 flex-shrink-0" />
+                                    <div className="text-sm">
+                                        <p className="font-medium mb-1">Verification pending</p>
+                                        <p className="text-xs">Check your inbox for a verification email from NPVN.</p>
+                                    </div>
                                 </div>
-                                <p className="text-sm text-slate-600 dark:text-slate-400">
-                                    Please check your inbox and click the verification link to continue.
-                                </p>
                                 <Button
                                     variant="outline"
-                                    size="sm"
                                     onClick={async () => {
                                         const { supabase } = await import('../services/supabase');
-                                        const { error } = await supabase.auth.resend({
-                                            type: 'signup',
-                                            email: user.email!
-                                        });
-                                        if (error) {
-                                            alert('Failed to resend email. Please try again.');
-                                        } else {
-                                            alert('Verification email sent! Please check your inbox.');
+                                        const { data: { session } } = await supabase.auth.getSession();
+                                        if (session?.user.email) {
+                                            await supabase.auth.resend({
+                                                type: 'signup',
+                                                email: session.user.email
+                                            });
+                                            alert('Verification email sent! Check your inbox.');
                                         }
                                     }}
                                 >
-                                    <Mail size={16} className="mr-2" />
                                     Resend Verification Email
                                 </Button>
                             </div>
